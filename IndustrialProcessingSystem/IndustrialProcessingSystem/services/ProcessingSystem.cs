@@ -1,4 +1,5 @@
 ﻿using IndustrialProcessingSystem.config;
+using IndustrialProcessingSystem.enums;
 using IndustrialProcessingSystem.models;
 using System;
 using System.Collections.Generic;
@@ -17,6 +18,7 @@ namespace IndustrialProcessingSystem.services
         private readonly SemaphoreSlim _semaphore;
         private readonly List<Thread> _workers = new();
         private readonly CancellationTokenSource _cts = new();
+        private readonly Dictionary<Guid, JobHandle> _handles = new();
 
         public ProcessingSystem(SystemConfig config)
         {
@@ -58,9 +60,11 @@ namespace IndustrialProcessingSystem.services
                     return null;
                 }
 
-                var handle = new JobHandle(job.Id);
+                JobHandle handle = new JobHandle(job.Id);
                 _queue.Enqueue(job, job.Priority);
                 _submittedIds.Add(job.Id);
+
+                _handles[job.Id] = handle;
 
                 // Obavesti nit da ima posla
                 _semaphore.Release();
@@ -90,9 +94,30 @@ namespace IndustrialProcessingSystem.services
 
                     if (job != null)
                     {
-                        // Obrada posla...
-                        Console.WriteLine($"Worker {Thread.CurrentThread.Name} obradjuje job {job.Id}");
+                        JobHandle? handle;
+                        lock (_lock)
+                        {
+                            _handles.TryGetValue(job.Id, out handle);
+                        }
 
+                        try
+                        {
+                            int result = job.Type switch
+                            {
+                                JobType.Prime => PrimeJobProcessor.Process(job.Payload),
+                                JobType.IO => IoJobProcessor.Process(job.Payload),
+                                _ => throw new Exception($"Nepoznat tip posla!")
+                            };
+
+                            // Obavestimo klijenta da je posao zavrsen
+                            handle?.Complete(result);
+                            Console.WriteLine($"Job {job.Id} je zavrsen sa rezultatom {result}");
+                        }
+                        catch (Exception ex)
+                        {
+                            handle?.Fail(ex);
+                            Console.WriteLine($"Job {job.Id} failed: {ex.Message}");
+                        }
                     }
                 }
                 catch (OperationCanceledException)
