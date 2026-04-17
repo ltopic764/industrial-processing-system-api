@@ -6,7 +6,10 @@ using System.Threading.Tasks;
 
 namespace IndustrialProcessingSystem.events
 {
-    internal class JobCompleted
+    public class JobCompletedEvent
     {
+        public Guid JobId { get; set; }
+        public int Result { get; set; }
+        public DateTime CompletedAt { get; set; }
     }
 }

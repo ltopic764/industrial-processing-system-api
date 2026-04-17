@@ -1,5 +1,6 @@
 ﻿using IndustrialProcessingSystem.config;
 using IndustrialProcessingSystem.enums;
+using IndustrialProcessingSystem.events;
 using IndustrialProcessingSystem.models;
 using System;
 using System.Collections.Generic;
@@ -9,8 +10,14 @@ using System.Threading.Tasks;
 
 namespace IndustrialProcessingSystem.services
 {
+
+    public delegate void JobCompletedHandler(JobCompletedEvent args);
+    public delegate void JobFailedHandler(JobFailedEvent args);
+
     public class ProcessingSystem
     {
+        public event JobCompletedHandler JobCompleted;
+        public event JobFailedHandler JobFailed;
         private readonly PriorityQueue<Job, int> _queue = new();
         private readonly HashSet<Guid> _submittedIds = new();
         private readonly int _maxQueueSize;
@@ -19,6 +26,7 @@ namespace IndustrialProcessingSystem.services
         private readonly List<Thread> _workers = new();
         private readonly CancellationTokenSource _cts = new();
         private readonly Dictionary<Guid, JobHandle> _handles = new();
+
 
         public ProcessingSystem(SystemConfig config)
         {
@@ -35,13 +43,6 @@ namespace IndustrialProcessingSystem.services
                 _workers.Add(worker);
                 worker.Start();
             }
-
-            // Ucitaj poslove iz XML
-            foreach(Job job in config.Jobs)
-            {
-                Submit(job);
-            }
-
         }
 
         public JobHandle? Submit(Job job)
@@ -73,9 +74,19 @@ namespace IndustrialProcessingSystem.services
             }
         }
 
+        // Ucitaj poslove iz xml
+        public void LoadInitialJobs(IEnumerable<Job> jobs)
+        {
+            foreach (Job job in jobs)
+            {
+                Submit(job);
+            }
+        }
+
         public void WorkerLoop()
         {
-            while (_cts.Token.IsCancellationRequested)
+            Console.WriteLine($"{Thread.CurrentThread.Name} pokrenut!");
+            while (!_cts.Token.IsCancellationRequested)
             {
                 try
                 {
@@ -111,12 +122,14 @@ namespace IndustrialProcessingSystem.services
 
                             // Obavestimo klijenta da je posao zavrsen
                             handle?.Complete(result);
-                            Console.WriteLine($"Job {job.Id} je zavrsen sa rezultatom {result}");
+                            // Emitujemo event da je uspesno posao gotov
+                            JobCompleted?.Invoke(new JobCompletedEvent { JobId = job.Id, Result = result, CompletedAt = DateTime.Now });
                         }
                         catch (Exception ex)
                         {
                             handle?.Fail(ex);
-                            Console.WriteLine($"Job {job.Id} failed: {ex.Message}");
+                            // Emitujemo event da nije uspesan posao
+                            JobFailed?.Invoke(new JobFailedEvent { JobId = job.Id, Reason = ex.Message, FailedAt = DateTime.Now });
                         }
                     }
                 }
