@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace IndustrialProcessingSystem.models
 {
-    internal class Job
+    public class Job
     {
         public Guid Id { get; set; }
         public JobType Type { get; set; }
