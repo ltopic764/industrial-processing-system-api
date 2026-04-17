@@ -1,4 +1,5 @@
-﻿using System;
+﻿using IndustrialProcessingSystem.enums;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -9,7 +10,9 @@ namespace IndustrialProcessingSystem.events
     public class JobCompletedEvent
     {
         public Guid JobId { get; set; }
+        public JobType Type { get; set; }
         public int Result { get; set; }
+        public long Duration { get; set; }
         public DateTime CompletedAt { get; set; }
     }
 }
