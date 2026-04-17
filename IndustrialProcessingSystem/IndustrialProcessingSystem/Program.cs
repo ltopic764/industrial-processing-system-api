@@ -27,6 +27,9 @@ namespace IndustrialProcessingSystem
                 EventLogger logger = new EventLogger();
                 logger.Subscribe(system);
 
+                ReportService reportService = new ReportService();
+                reportService.Subscribe(system);
+
                 system.LoadInitialJobs(config.Jobs);
 
                 // Producer niti
@@ -48,6 +51,7 @@ namespace IndustrialProcessingSystem
                 Console.WriteLine("Pritisni taster za zavrsetak programa");
                 Console.ReadKey();
 
+                reportService.Stop();
                 system.Shutdown();
             }
             catch (Exception ex)

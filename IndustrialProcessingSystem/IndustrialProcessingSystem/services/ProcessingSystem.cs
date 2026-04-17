@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace IndustrialProcessingSystem.services
@@ -113,32 +114,25 @@ namespace IndustrialProcessingSystem.services
                             _handles.TryGetValue(job.Id, out handle);
                         }
 
+                        Stopwatch stopwatch = Stopwatch.StartNew(); // merenje vremena zbog izvestaja
+
                         try
                         {
                             // Pokusaj izvrsenja
                             int result = ExecuteWithRetry(job);
 
+                            stopwatch.Stop();
+
                             // Ako smo dobili rezultat, posao je uspesno zavrsen
                             handle?.Complete(result);
                             // Emitujemo event da je uspesno posao gotov
-                            JobCompleted?.Invoke(new JobCompletedEvent { JobId = job.Id, Result = result, CompletedAt = DateTime.Now });
+                            JobCompleted?.Invoke(new JobCompletedEvent { JobId = job.Id, Type = job.Type, Result = result, Duration = stopwatch.ElapsedMilliseconds, CompletedAt = DateTime.Now });
                         }
                         catch (Exception ex)
                         {
-                            if (ex.Message == "ABORT")
-                            {
-                                Console.WriteLine($"Job {job.Id} je abortiran nakon 3 neuspesna pokusaja.");
-                                Console.WriteLine($"Job payload: {job.Payload}");
-                            }
-                            else
-                            {
-                                Console.WriteLine($"GRESKA U WORKERU: {ex.Message}");
-                                Console.WriteLine($"Job payload: {job.Payload}");
-                            }
-
                             handle?.Fail(ex);
                             // Emitujemo event da nije uspesan posao
-                            JobFailed?.Invoke(new JobFailedEvent { JobId = job.Id, Reason = ex.Message, FailedAt = DateTime.Now });
+                            JobFailed?.Invoke(new JobFailedEvent { JobId = job.Id, Type = job.Type, Reason = ex.Message, Duration = stopwatch.ElapsedMilliseconds, FailedAt = DateTime.Now });
                         }
                     }
                 }
@@ -220,7 +214,7 @@ namespace IndustrialProcessingSystem.services
                 // Ako nije poslednji pokusaj, prijavi fail
                 if (attempt < maxAttempts)
                 {
-                    JobFailed?.Invoke(new JobFailedEvent { JobId = job.Id, Reason = $"Attempt failed: {lastException.Message}", FailedAt = DateTime.Now });
+                    JobFailed?.Invoke(new JobFailedEvent { JobId = job.Id, Type = job.Type, Reason = $"Attempt failed: {lastException.Message}", Duration = timeoutMillisec, FailedAt = DateTime.Now });
                 }
             }
 
