@@ -6,7 +6,10 @@ using System.Threading.Tasks;
 
 namespace IndustrialProcessingSystem.events
 {
-    internal class JobFailed
+    public class JobFailedEvent
     {
+        public Guid JobId { get; set; }
+        public string Reason { get; set; }
+        public DateTime FailedAt { get; set; }
     }
 }
