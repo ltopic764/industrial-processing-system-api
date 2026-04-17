@@ -20,6 +20,7 @@ namespace IndustrialProcessingSystem.test
             await Test_Job_Complete();
             await Test_DuplicateId_IsRejected();
             await Test_SlowJob_TriggerAbort();
+            await Test_GetMethods();
 
             Console.WriteLine("Svi testovi gotovi");
         }
@@ -124,6 +125,59 @@ namespace IndustrialProcessingSystem.test
             system.Shutdown();
         }
 
+        // Test 4
+        private static async Task Test_GetMethods()
+        {
+            Console.WriteLine("Test 4: GetTopJobs i GetJob");
+
+            SystemConfig config = CreateTestConfig();
+            ProcessingSystem system = new ProcessingSystem(config);
+
+            Job job1 = new Job(Guid.NewGuid(), JobType.IO, "delay:1000", 3);
+            Job job2 = new Job(Guid.NewGuid(), JobType.IO, "delay:1000", 1);
+            Job job3 = new Job(Guid.NewGuid(), JobType.IO, "delay:1000", 2);
+
+            system.Submit(job1);
+            system.Submit(job2);
+            system.Submit(job3);
+
+            var topJobs = system.GetTopJobs(2);
+
+            Console.WriteLine("Top jobs:");
+            foreach (var job in topJobs)
+            {
+                Console.WriteLine($"Id: {job.Id}, Priority: {job.Priority}");
+            }
+
+            // Provera da li je sortiran po prioritetu
+            var topList = topJobs.ToList();
+
+            if (topList.Count > 1 && topList[0].Priority > topList[1].Priority)
+            {
+                throw new Exception("Test pao, GetTopJobs nije sortirao po prioritetu.");
+            }
+
+            var foundJob = system.GetJob(job2.Id);
+
+            if (foundJob == null || foundJob.Id != job2.Id)
+            {
+                throw new Exception("Test pao, GetJob nije pronasao ispravan job.");
+            }
+
+            JobHandle? h1 = system.Submit(job1);
+            JobHandle? h2 = system.Submit(job2);
+            JobHandle? h3 = system.Submit(job3);
+
+            await Task.WhenAll(
+                h1?.Result ?? Task.CompletedTask,
+                h2?.Result ?? Task.CompletedTask,
+                h3?.Result ?? Task.CompletedTask
+            );
+
+            system.Shutdown();
+
+            Console.WriteLine("Test 4 prosao.");
+        }
         private static SystemConfig CreateTestConfig()
         {
             return new SystemConfig

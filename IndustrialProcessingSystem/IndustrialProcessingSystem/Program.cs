@@ -3,6 +3,7 @@ using IndustrialProcessingSystem.enums;
 using IndustrialProcessingSystem.events;
 using IndustrialProcessingSystem.models;
 using IndustrialProcessingSystem.services;
+using IndustrialProcessingSystem.test;
 using System;
 
 namespace IndustrialProcessingSystem
@@ -14,6 +15,15 @@ namespace IndustrialProcessingSystem
 
         static void Main(string[] args)
         {
+
+            //bool runTests = true;
+
+            //if (runTests)
+            //{
+            //    await Tests.RunAll();
+            //    return;
+            //}
+
             try
             {
                 // Ucitavanje konfiguracije iz XML

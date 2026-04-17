@@ -28,7 +28,7 @@ namespace IndustrialProcessingSystem.services
             }
 
             // Na svaki minut
-            _timer = new Timer(GenerateReport, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+            _timer = new Timer(GenerateReport, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
         }
 
         public void Subscribe(ProcessingSystem system)
