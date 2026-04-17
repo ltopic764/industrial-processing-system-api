@@ -26,6 +26,7 @@ namespace IndustrialProcessingSystem.services
         private readonly List<Thread> _workers = new();
         private readonly CancellationTokenSource _cts = new();
         private readonly Dictionary<Guid, JobHandle> _handles = new();
+        private readonly Dictionary<Guid, Job> _jobsById = new(); // svi poslovi ikad
 
 
         public ProcessingSystem(SystemConfig config)
@@ -66,6 +67,7 @@ namespace IndustrialProcessingSystem.services
                 _submittedIds.Add(job.Id);
 
                 _handles[job.Id] = handle;
+                _jobsById[job.Id] = job;
 
                 // Obavesti nit da ima posla
                 _semaphore.Release();
@@ -113,20 +115,27 @@ namespace IndustrialProcessingSystem.services
 
                         try
                         {
-                            int result = job.Type switch
-                            {
-                                JobType.Prime => PrimeJobProcessor.Process(job.Payload),
-                                JobType.IO => IoJobProcessor.Process(job.Payload),
-                                _ => throw new Exception($"Nepoznat tip posla!")
-                            };
+                            // Pokusaj izvrsenja
+                            int result = ExecuteWithRetry(job);
 
-                            // Obavestimo klijenta da je posao zavrsen
+                            // Ako smo dobili rezultat, posao je uspesno zavrsen
                             handle?.Complete(result);
                             // Emitujemo event da je uspesno posao gotov
                             JobCompleted?.Invoke(new JobCompletedEvent { JobId = job.Id, Result = result, CompletedAt = DateTime.Now });
                         }
                         catch (Exception ex)
                         {
+                            if (ex.Message == "ABORT")
+                            {
+                                Console.WriteLine($"Job {job.Id} je abortiran nakon 3 neuspesna pokusaja.");
+                                Console.WriteLine($"Job payload: {job.Payload}");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"GRESKA U WORKERU: {ex.Message}");
+                                Console.WriteLine($"Job payload: {job.Payload}");
+                            }
+
                             handle?.Fail(ex);
                             // Emitujemo event da nije uspesan posao
                             JobFailed?.Invoke(new JobFailedEvent { JobId = job.Id, Reason = ex.Message, FailedAt = DateTime.Now });
@@ -143,6 +152,82 @@ namespace IndustrialProcessingSystem.services
                 }
             }
         }
+
+        private int ExecuteJob(Job job)
+        {
+            return job.Type switch
+            {
+                JobType.Prime => PrimeJobProcessor.Process(job.Payload),
+                JobType.IO => IoJobProcessor.Process(job.Payload),
+                _ => throw new Exception("Nepoznat tip posla")
+            };
+        }
+
+        public Job? GetJob(Guid id)
+        {
+            lock(_lock)
+            {
+                if (_jobsById.TryGetValue(id, out Job? job))
+                {
+                    return job;
+                }
+
+                return null;
+            }
+        }
+
+        public IEnumerable<Job> GetTopJobs(int n)
+        {
+            lock (_lock)
+            {
+                return _queue.UnorderedItems
+                    .Select(item => item.Element)
+                    .OrderBy(job => job.Priority)
+                    .Take(n)
+                    .ToList();
+            }
+        }
+
+        private int ExecuteWithRetry(Job job)
+        {
+            int maxAttempts = 3;
+            int timeoutMillisec = 2000;
+            Exception lastException = null;
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    Task<int> task = Task.Run(() => ExecuteJob(job));
+
+                    // Cekamo najvise 2 sekunde
+                    bool finishedInTime = task.Wait(timeoutMillisec);
+
+                    if (finishedInTime)
+                    {
+                        // Ako je posao zavrsen, uzmemo rezultat
+                        return task.Result;
+                    }
+
+                    // Ako nije zavrsio za 2 sekunde, fail
+                    lastException = new TimeoutException($"Job exceeded timeout of {timeoutMillisec} ms. Try {attempt}/{maxAttempts}");
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                }
+
+                // Ako nije poslednji pokusaj, prijavi fail
+                if (attempt < maxAttempts)
+                {
+                    JobFailed?.Invoke(new JobFailedEvent { JobId = job.Id, Reason = $"Attempt failed: {lastException.Message}", FailedAt = DateTime.Now });
+                }
+            }
+
+            // Sva tri pokusaja su propala
+            throw new Exception("ABORT");
+        }
+
 
         public void Shutdown()
         {
